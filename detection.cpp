@@ -45,4 +45,19 @@ static const AckGameDescription gameDescriptions[] = {
 			"ack",
 			"",
 			AD_ENTRY1("ACKDATA0.DAT", "12345678901234567890123456789012"),
-		
+			/* Additional metadata fields as needed */
+		},
+		/* Additional structure fields as needed */
+	},
+	{nullptr, nullptr}  // Terminator
+};
+
+const PlainGameDescriptor *detectGame(const Common::String &gameId) {
+	for (int i = 0; ackGames[i].gameId != nullptr; i++) {
+		if (gameId == ackGames[i].gameId)
+			return &ackGames[i];
+	}
+	return nullptr;
+}
+
+} // End of namespace Ack
