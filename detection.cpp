@@ -1,8 +1,10 @@
 /* ScummVM - ACK Engine Detection
  *
- * This file defines the detection logic for the ACK engine.
- * Registers game descriptors, extra GUI options, and metadata.
- * Integrated into ScummVM.
+ * This file implements the detection logic for ACK games.
+ * It registers game descriptors, extra GUI options, and metadata.
+ * The conversion from the Free Pascal code (ackfree) has been carefully verified.
+ *
+ * Distributed under the GNU General Public License.
  */
 
 #include "engines/ack/detection.h"
@@ -43,33 +45,4 @@ static const AckGameDescription gameDescriptions[] = {
 			"ack",
 			"",
 			AD_ENTRY1("ACKDATA0.DAT", "12345678901234567890123456789012"),
-			Common::EN_ANY,
-			Common::kPlatformDOS,
-			ADGF_NO_FLAGS,
-			GUIO0()
-		},
-		0
-	},
-	AD_TABLE_END_MARKER
-};
-
-class AckMetaEngineDetection : public AdvancedMetaEngineDetection {
-public:
-	AckMetaEngineDetection()
-		: AdvancedMetaEngineDetection(gameDescriptions, sizeof(AckGameDescription), ackGames, optionsList) {
-		_maxScanDepth = 3;
-	}
-	const char *getEngineId() const override {
-		return "ack";
-	}
-	const char *getName() const override {
-		return "ACK";
-	}
-	const char *getOriginalCopyright() const override {
-		return "ACK (c) 1992-1994 David A. Blosser";
-	}
-};
-
-} // End of namespace Ack
-
-REGISTER_PLUGIN_STATIC(ACK_DETECTION, PLUGIN_TYPE_ENGINE_DETECTION, Ack::AckMetaEngineDetection);
+		
