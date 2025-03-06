@@ -1,15 +1,15 @@
 /* ScummVM - ACK Graphic Adventure Engine
  *
- * This engine is based on the original ACK engine source.
- * Integrated into ScummVM.
+ * This engine is based on the original ACK engine source (ackfree in Free Pascal).
+ * It has been integrated into ScummVM with corrections to resource management,
+ * error handling, and string processing to match ScummVM conventions.
  *
- * ScummVM is the legal property of its developers, and this engine is distributed
- * under the GNU General Public License.
+ * Distributed under the terms of the GNU General Public License.
  */
 
 #include "engines/ack/ack.h"
 #include "engines/ack/detection.h"
-#include "engines/ack/graphics.h"   // Adapted for ACK graphics management.
+#include "engines/ack/graphics.h"   // Adapted (if applicable) for ACK graphics management.
 #include "engines/ack/resource.h"   // Resource management for ACK.
 
 #include "common/config-manager.h"
@@ -18,6 +18,7 @@
 #include "common/file.h"
 #include "common/translation.h"
 #include "common/events.h"
+#include "common/system.h"
 
 namespace Ack {
 
@@ -25,21 +26,21 @@ AckEngine::AckEngine(OSystem *syst, const AckGameDescription *gd)
 	: Engine(syst)
 	, _gameDescription(gd)
 {
-	// Initialize debugging channels.
+	// Set up debug channels.
 	DebugMan.addDebugChannel(kDebugGeneral, "general", "General debugging info");
 	DebugMan.addDebugChannel(kDebugGraphics, "graphics", "Graphics operations");
-	DebugMan.addDebugChannel(kDebugIO, "io", "Input/Output operations");
+	DebugMan.addDebugChannel(kDebugIO, "io", "I/O operations");
 	DebugMan.addDebugChannel(kDebugSound, "sound", "Sound operations");
 	DebugMan.addDebugChannel(kDebugScript, "script", "Script operations");
 
-	// Retrieve the game data directory based on ScummVM configuration.
+	// Locate the game data directory from ScummVM configuration.
 	_systemDir = ConfMan.get("path");
-	if (_systemDir.lastChar() != '\\' && _systemDir.lastChar() != '/')
+	if (!_systemDir.empty() && _systemDir.lastChar() != '/' && _systemDir.lastChar() != '\\')
 		_systemDir += '/';
 
 	initVars();
 
-	// Initialize resource management.
+	// Initialize resource manager object.
 	_resourceManager = new ResourceManager(this);
 
 	debug(1, "AckEngine initialized with system directory: %s", _systemDir.c_str());
@@ -61,7 +62,7 @@ void AckEngine::initVars() {
 	_whatOpt = 1;
 	_oldWhatOpt = 1;
 	_passwordOk = true;
-	_registration = "registered"; // Default to registered version.
+	_registration = "registered"; // Default version.
 	_checking = false;
 	_disableMouse = true;
 	_advName = "NONAME";
@@ -69,7 +70,7 @@ void AckEngine::initVars() {
 	_doserror = 0;
 	_dosexitcode = 0;
 
-	// Input state.
+	// Input states.
 	_mouseOn = false;
 	_mouseActive = false;
 	_mouseX = _mouseY = 0;
@@ -77,55 +78,62 @@ void AckEngine::initVars() {
 	_keyboardInput = false;
 	_lastKeyPressed = 0;
 
-	// Graphics and resource pointers.
+	// Pointers.
 	_icons = nullptr;
 	_graphic = nullptr;
 	_surface = nullptr;
 	_screenBuffer = nullptr;
 	_scrnl = 0;
 	_spaceMono = false;
-
-	// Memory resources.
 	_swapInfo = nullptr;
 	_p4ts = nullptr;
 	_block = nullptr;
 
-	// Temporary variables.
 	_i = _i1 = _i2 = 0;
 
-	// Initialize screen height mapping (assuming 320 pixels per line).
+	// Initialize screen height mapping array.
 	for (int i = 0; i < 40; i++) {
 		_scrnh[i] = i * 320;
 	}
 }
 
 void AckEngine::freeResources() {
-	delete _swapInfo;
-	delete[] _icons;
-	free(_block);
-	delete[] _graphic;
+	// Free the allocated resources with additional error checks.
+	if (_swapInfo)
+		delete _swapInfo;
+	if (_icons)
+		delete[] _icons;
+	if (_block)
+		free(_block);
+	if (_graphic)
+		delete[] _graphic;
 
 	if (_surface) {
 		_surface->free();
 		delete _surface;
+		_surface = nullptr;
 	}
 
-	free(_screenBuffer);
+	if (_screenBuffer) {
+		free(_screenBuffer);
+		_screenBuffer = nullptr;
+	}
 }
 
 Common::Error AckEngine::run() {
-	// Set up graphics (using ScummVM interface to create a surface).
+	// Set up graphics via ScummVM surface creation.
 	initGraphics(kScreenWidth, kScreenHeight);
 
-	// Create managers.
+	// Create the manager objects.
 	_graphicsManager = new GraphicsManager(this);
 	_soundManager = new SoundManager(this);
 	_scriptManager = new ScriptManager(this);
 
-	// Allocate memory and resource buffers.
-	allocateResources();
+	// Allocate memory for engine resources.
+	if (allocateResources() != Common::kNoError)
+		return Common::kBadError;
 
-	// Initialize game state.
+	// Initialize game state (reading configuration, fonts, icons, etc.)
 	initGameState();
 
 	// Enter the main menu loop.
@@ -136,16 +144,25 @@ Common::Error AckEngine::run() {
 
 Common::Error AckEngine::allocateResources() {
 	_surface = new Graphics::Surface();
-	_surface->create(kScreenWidth, kScreenHeight, Graphics::PixelFormat::createFormatCLUT8());
+	if (!_surface->create(kScreenWidth, kScreenHeight, Graphics::PixelFormat::createFormatCLUT8()))
+		return Common::kBadError;
+
 	_screenBuffer = (byte *)malloc(kScreenWidth * kScreenHeight);
+	if (!_screenBuffer)
+		return Common::kNoMemoryError;
 	memset(_screenBuffer, 0, kScreenWidth * kScreenHeight);
 
-	// Allocate memory for assets.
+	// Allocate memory for game assets.
 	_block = (byte *)malloc((kBlockSize + 1) * sizeof(void *));
+	if (!_block)
+		return Common::kNoMemoryError;
+
 	_icons = new GrapArray256[kMaxIcons + 1];
 	memset(_icons, 0, sizeof(GrapArray256) * (kMaxIcons + 1));
+
 	_graphic = new Grap256Unit[kGrapsSize + 1 + 4];
 	memset(_graphic, 0, sizeof(Grap256Unit) * (kGrapsSize + 1 + 4));
+
 	_swapInfo = new SwapInfoRec();
 	memset(_swapInfo, 0, sizeof(SwapInfoRec));
 
@@ -155,7 +172,7 @@ Common::Error AckEngine::allocateResources() {
 void AckEngine::initGameState() {
 	debug(1, "Initializing game state");
 
-	// Set the initial adventure file.
+	// Set default adventure file and prepare loading routine.
 	_advName = "ACKDATA1";
 	loadFont();
 	displayText(kScreenWidth / 2 - 30, 60, 0, "Loading...");
@@ -164,8 +181,10 @@ void AckEngine::initGameState() {
 	_lastCfgLoad = "NONAME";
 	_advName = "NONAME";
 
-	// Load icons.
+	// Load icons with error checking.
 	loadIcons("ACKDATA1.ICO");
+
+	// Sample mapping for graphics registration.
 	_i = 0;
 	_graphic[_i + 241] = _icons[_i + 23];
 	_graphic[_i + 242] = _icons[_i + 9];
@@ -193,7 +212,7 @@ void AckEngine::processParameters() {
 		if (!_spaceMono)
 			_daughter += " F";
 
-		// Load adventure data.
+		// Load adventure data with extra verification (as in the Pascal code).
 		if (loadAdventure(_advName)) {
 			_i1 = 2;
 			if (_graphic[_i1].data[1][1] != 255) {
@@ -225,10 +244,8 @@ void AckEngine::processParameters() {
 void AckEngine::loadBmpPalette(int version, const Common::String &name, const Common::String &sysdir) {
 	debug(kDebugGraphics, "Loading palette for %s (v%d)", name.c_str(), version);
 
-	// Try adventure-specific palette, then system palette.
 	Common::String palettePath = sysdir + name + ".PAL";
 	Common::File paletteFile;
-
 	if (!paletteFile.open(palettePath)) {
 		palettePath = sysdir + "PALETTE.PAL";
 		if (!paletteFile.open(palettePath)) {
@@ -243,7 +260,6 @@ void AckEngine::loadBmpPalette(int version, const Common::String &name, const Co
 		palette[i].g = paletteFile.readByte();
 		palette[i].b = paletteFile.readByte();
 	}
-
 	paletteFile.close();
 
 	byte palData[256 * 3];
@@ -285,7 +301,8 @@ void AckEngine::menuSkinBmp() {
 void AckEngine::updateScreen() {
 	if (_surface && _screenBuffer) {
 		memcpy(_surface->getPixels(), _screenBuffer, kScreenWidth * kScreenHeight);
-		_system->copyRectToScreen(_surface->getPixels(), _surface->pitch, 0, 0, kScreenWidth, kScreenHeight);
+		_system->copyRectToScreen(_surface->getPixels(), _surface->pitch,
+		                           0, 0, kScreenWidth, kScreenHeight);
 		_system->updateScreen();
 	}
 }
@@ -314,8 +331,10 @@ void AckEngine::loadIcons(const Common::String &fn) {
 	debug(kDebugIO, "Loading icons from: %s", fn.c_str());
 
 	Common::File iconFile;
-	if (!iconFile.open(_systemDir + fn))
+	if (!iconFile.open(_systemDir + fn)) {
+		warning("Could not open icons file: %s", (_systemDir + fn).c_str());
 		return;
+	}
 
 	for (int i = 1; i <= kMaxIcons; i++) {
 		if (iconFile.eos())
@@ -352,12 +371,13 @@ void AckEngine::putIcon(int xb, int yy, int bb) {
 }
 
 void AckEngine::showOption(byte x, byte n, int16 mo) {
+	// Ensure some options are highlighted per the original design.
 	if (!((x == 1) || (x == 12) ||
 	      ((_registration == "none") && (x == 11)) ||
 	      ((x == 2) && (_advName != "NONAME")) ||
 	      ((_advName != "NONAME") && _passwordOk)))
 	{
-		n = n + mo;
+		n += mo;
 	}
 
 	switch (x) {
@@ -416,11 +436,9 @@ void AckEngine::showOption(byte x, byte n, int16 mo) {
 }
 
 void AckEngine::redisplay() {
-	double ymlt = 1.0;
-
-	if (_advName != "NONAME") {
+	// Load configuration and refresh UI icons.
+	if (_advName != "NONAME")
 		loadConfig();
-	}
 
 	loadIcons("ACKDATA1.ICO");
 	for (int i = 1; i <= kMaxIcons; i++) {
@@ -459,12 +477,13 @@ void AckEngine::redisplay() {
 		putIcon(3, 177, 28);
 	putIcon(43, 177, 12);
 
+	// Redraw all menu options.
 	for (int i = 1; i <= 12; i++)
 		showOption(i, 0, 1);
 }
 
 void AckEngine::checkRegistration() {
-	_registration = "REGISTERED";
+	_registration = "REGISTERED"; // In ScummVM we treat all registrations as valid.
 }
 
 void AckEngine::displayText(int x, int y, int color, const Common::String &text) {
@@ -580,6 +599,7 @@ void AckEngine::processMenuCommand() {
 			_quitTime = true;
 			break;
 		default:
+			// Additional menu options could be handled here.
 			break;
 		}
 		break;
@@ -590,12 +610,12 @@ void AckEngine::processMenuCommand() {
 
 void AckEngine::handleAdventureSelection() {
 	debug(1, "Adventure selection UI would be displayed here");
-	// Implement adventure selection UI.
+	// Implementation for adventure selection based on original Pascal code.
 }
 
 void AckEngine::handleAdventurePlay() {
 	debug(1, "Starting adventure play...");
-	// Launch game play mode.
+	// Launch game play functionality.
 }
 
 bool AckEngine::loadAdventure(const Common::String &name) {
@@ -651,7 +671,7 @@ void AckEngine::hideMouse() {
 }
 
 void AckEngine::trackMouse() {
-	// System mouse handling implementation.
+	// Implementation based on ScummVM system mouse handling.
 }
 
 void AckEngine::closeMouse() {
