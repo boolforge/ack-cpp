@@ -1,7 +1,9 @@
 /* ScummVM - ACK Graphic Adventure Engine Header
  *
- * This header defines structures, constants, and the main engine class for the ACK engine.
- * Integrated into ScummVM.
+ * This file defines the necessary structures, constants, and the main engine class
+ * for the ACK engine. It has been adapted from the original Free Pascal source of ackfree.
+ *
+ * Distributed under the terms of the GNU General Public License.
  */
 
 #ifndef ACK_H
@@ -22,50 +24,53 @@
 
 #include "engines/util.h"
 #include "engines/engine.h"
-
 #include "graphics/surface.h"
 #include "graphics/palette.h"
 
 namespace Ack {
 
-// Fixed-size string structure.
+// Type alias for strings.
 typedef Common::String IttyString;
 
-// Structure for swapping information (from original).
+// Structure for swapping information used originally.
 struct SwapInfoRec {
 	Common::String execFile;
 	Common::String execParam;
 	byte data[11];
 };
 
-// 16x16 graphic tile structure.
+// 16x16 graphic tile structure (converted from Pascal type).
 struct Grap256Unit {
 	byte data[17][17];
 };
 
 typedef Grap256Unit GrapArray256;
 
-// Palette record structure.
+// Palette record.
 struct PaletteRec {
 	byte r, g, b;
 };
 
-// Master record for game configuration.
+// Master record for game configuration data.
 struct MasterRec {
 	byte textColors[10];
 	int ackVersion;
 	byte phaseColors[3][5][4];
 };
 
+// Forward declaration for game description structure.
+struct AckGameDescription;
+
 // Main ACK engine class.
 class AckEngine : public Engine {
 public:
-	AckEngine(OSystem *syst, const struct AckGameDescription *gd);
+	AckEngine(OSystem *syst, const AckGameDescription *gd);
 	~AckEngine() override;
 
 	Common::Error run() override;
 
 private:
+	// Private member variables.
 	bool _quitTime;
 	SwapInfoRec *_swapInfo;
 	char _menuCmd;
@@ -113,11 +118,10 @@ private:
 	static const int kScreenHeight = 200;
 	static const int kMaxIcons = 100;
 
-	// Methods.
+	// Method declarations.
 	void initVars();
 	void freeResources();
 	Common::Error allocateResources();
-
 	void initGameState();
 	void processParameters();
 	void loadBmpPalette(int version, const Common::String &name, const Common::String &sysdir);
@@ -152,7 +156,7 @@ private:
 	void loadGraps();
 	Common::String getParameter(int idx);
 
-	// Manager references.
+	// Manager object references.
 	GraphicsManager *_graphicsManager;
 	SoundManager *_soundManager;
 	ScriptManager *_scriptManager;
